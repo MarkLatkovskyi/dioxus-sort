@@ -1,36 +1,125 @@
-// The dioxus prelude contains a ton of common items used in dioxus apps. It's a good idea to import wherever you
-// need dioxus
-use dioxus::prelude::*;
-
+use std::collections::HashMap;
+use std::time::Duration;
+use crate::canvas_updater::CanvasUpdater;
 use components::*;
+use consts::*;
+use dioxus::prelude::*;
+use futures::channel::mpsc::{Receiver, TryRecvError};
+use futures::channel::oneshot::Sender as OneSender;
+use futures_timer::Delay;
+use crate::checked_list::ListAction;
 
-/// Define a components module that contains all shared components for our app.
+mod canvas_updater;
+mod checked_list;
+mod checked_value;
 mod components;
+mod consts;
+mod sorts;
 
-// We can import assets in dioxus with the `asset!` macro. This macro takes a path to an asset relative to the crate root.
-// The macro returns an `Asset` type that will display as the path to the asset in the browser or a local path in desktop bundles.
+#[allow(unused)]
 const FAVICON: Asset = asset!("/assets/favicon.ico");
-// The asset macro also minifies some assets like CSS and JS to make bundled smaller
 const MAIN_CSS: Asset = asset!("/assets/styling/main.css");
+#[allow(unused)]
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
+#[allow(unused)]
+const TAILWIND: Asset = asset!("/assets/tailwind.js");
 
 fn main() {
-    // The `launch` function is the main entry point for a dioxus app. It takes a component and renders it with the platform feature
-    // you have enabled
     launch(App);
 }
 
-/// App is the main component of our app. Components are the building blocks of dioxus apps. Each component is a function
-/// that takes some props and returns an Element. In this case, App takes no props because it is the root of our app.
-///
-/// Components should be annotated with `#[component]` to support props, better error messages, and autocomplete
+pub enum CoroutineAction {
+    NewSort(Receiver<ListAction>, OneSender<Vec<Num>>),
+    ChangeLen(usize),
+    Stop,
+    Start,
+    ChangeDelay(Duration),
+    Shuffle,
+}
+
+async fn coroutine(mut rx: UnboundedReceiver<CoroutineAction>) {
+    let list = vec![1, 2, 3, 4, 5, 6, 7];
+    let mut canvas_updater = CanvasUpdater::new(list);
+    let mut delay = Duration::from_millis(100);
+    let mut receiver: Option<Receiver<_>> = None;
+    let mut is_running = false;
+    loop {
+        let ok_message = match rx.try_recv() {
+            Ok(v) => v,
+            Err(TryRecvError::Empty) => {
+                let Some(receiver) = receiver.as_mut() else {
+                    Delay::new(delay).await;
+                    continue;
+                };
+                if is_running {
+                    let Ok(action) = receiver.recv().await else {
+                        is_running = false;
+                        continue
+                    };
+                    canvas_updater.proceed(action);
+                }
+
+                Delay::new(delay).await;
+                continue
+            }
+            Err(TryRecvError::Closed) => {
+                loop {
+                    match rx.recv().await.unwrap() {
+                        msg @ CoroutineAction::NewSort(..) => {
+                            break msg;
+                        }
+                        _ => continue,
+                    }
+                }
+            }
+        };
+        match ok_message {
+            CoroutineAction::Stop => {
+                is_running = false;
+            }
+            CoroutineAction::ChangeDelay(d) => delay = d,
+            CoroutineAction::Shuffle => {
+                canvas_updater.shuffle_list();
+                is_running = false;
+                receiver = None;
+            },
+            CoroutineAction::NewSort(new_receiver, sender) => {
+                is_running = false;
+                sender.send(canvas_updater.get_list().clone()).unwrap();
+                receiver = Some(new_receiver)
+            }
+            CoroutineAction::Start => {
+                is_running = true;
+            }
+            CoroutineAction::ChangeLen(l) => {
+                *canvas_updater.modify_list() = (1..=l as Num).collect();
+            }
+        }
+    }
+}
+
 #[component]
 fn App() -> Element {
-    // The `rsx!` macro lets us define HTML inside of rust. It expands to an Element with all of our HTML inside.
 
-    let mut len = use_signal(|| 10);
+    use_coroutine(async |rx| {
+        // Delay::new(Duration::from_secs(5)).await;
+        coroutine(rx).await
+    });
+
     rsx! {
-        Stylesheet { href: TAILWIND_CSS }
+
+        // head {
+        //     script {
+        //         src: TAILWIND,
+        //     }
+        // }
+        // Stylesheet { href: TAILWIND_CSS }
+        Stylesheet { href: MAIN_CSS }
+        canvas {
+            id: "list-canvas",
+            width: WIDTH,
+            height: HEIGHT,
+        }
         Panel {}
     }
 }
