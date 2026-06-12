@@ -239,6 +239,7 @@ impl App {
                 self.delay = d;
             }
             AppMessage::ChangeLen(l) => {
+                self.sort_handle = None;
                 self.is_running = false;
                 self.display_state.is_running.set(false);
                 self.receiver = None;
