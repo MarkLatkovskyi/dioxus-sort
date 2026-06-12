@@ -1,94 +1,115 @@
+use crate::app_logic::{AppMessage, DisplayState};
+use crate::components::sort_selection::SortSelection;
 use dioxus::prelude::*;
 use std::time::Duration;
-use futures::channel::{mpsc, oneshot};
-use crate::checked_list::CheckedList;
-use crate::CoroutineAction;
-use crate::sorts::gnome_sort;
+use crate::components::button::{Button, ButtonVariant};
+use crate::components::input::Input;
+use crate::components::label::Label;
+use crate::components::switch::Switch;
 
 #[component]
 pub fn Panel() -> Element {
-    let min_len = 10;
-    let max_len = 1000;
-    let mut len = use_signal(String::new);
-
-    let min_delay = 1;
-    let max_delay = 1000;
-    let mut delay_str = use_signal(String::new);
+    let handle = use_coroutine_handle();
+    let state: DisplayState = use_context();
 
     rsx! {
-        form {
-            label {
-                r#for: "len_input",
-                "Length:"
-            }
-            input {
-                id: "len_input",
-                r#type: "number",
-                min: min_len,
-                max: max_len,
-                oninput: move |e| {
-                    let value = e.value();
-                    len.set(value.clone());
-                    if let Ok(x) = value.parse() && x > 0 {
-                        use_coroutine_handle().send(CoroutineAction::ChangeLen(x))
+        form { class: "flex-column",
+            SortInput {}
+            LenInput {}
+            DelayInput {}
+        }
+        div { class: "flex-row",
+            Label {
+                html_for: "",
+                "Sound (may be unpleasant): "
+                Switch {
+                    id: "switch",
+                    checked: *state.sound_on.read(),
+                    on_checked_change: move |_| {
+                        handle.send(AppMessage::SwitchSound)
                     }
+                }
+            }
+            Button {
+                variant: ButtonVariant::Secondary,
+                onclick: move |_| handle.send(AppMessage::Shuffle), "Shuffle"
+            }
+            Button {
+                variant: ButtonVariant::Primary,
+                onclick: move |_| handle.send(AppMessage::StartOrStop),
+                disabled: state.sort.read().is_none(),
+                title: if state.sort.read().is_none() { "Select a sort first" } else { "" },
+                if *state.is_running.read() {
+                    "Stop"
+                } else {
+                    "Start"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn LenInput() -> Element {
+    let handle = use_coroutine_handle();
+    let state: DisplayState = use_context();
+    
+    rsx! {
+        Label {
+            html_for: "",
+            "Length:"
+            Input {
+                oninput: move |e: Event<FormData>| async move {
+                    let Ok(len) = e.value().parse() else {
+                        return;
+                    };
+                    handle.send(AppMessage::ChangeLen(len));
                 },
-                value: len,
-            }
-            br {}
-            label {
-                r#for: "delay_input",
-                "Delay:"
-            }
-            input {
-                id: "delay_input",
                 r#type: "number",
-                min: min_delay,
-                max: max_delay,
-                oninput: move |e| {
-                    let value = e.value();
-                    delay_str.set(value.clone());
-                    if let Ok(x) = value.parse() {
-                        use_coroutine_handle().send(CoroutineAction::ChangeDelay(Duration::from_millis(x)));
-                    }
-                },
-                value: delay_str,
+                min: 1,
+                max: 1000,
+                value: state.length,
             }
         }
-        button {
-            onclick: move |_| {
-                use_coroutine_handle().send(CoroutineAction::Shuffle)
-            },
-            "Shuffle",
-        }
-        button {
-            onclick: move |_| async move {
-                let sort = gnome_sort;
+    }
+}
 
-                let (sender, receiver) = mpsc::channel(0);
-                let (list_sender, list_receiver) = oneshot::channel();
-
-                use_coroutine_handle().send(CoroutineAction::NewSort(receiver, list_sender));
-
-                let mut list = CheckedList::new(
-                    list_receiver.await.unwrap(),
-                    sender,
-                );
-                sort(&mut list).await
-            },
-            "New sort",
+#[component]
+pub fn SortInput() -> Element {
+    rsx! {
+        Label {
+            html_for: "",
+            "Current sort:"
+            SortSelection {}
         }
-        button {
-            onclick: move |_| {
-                use_coroutine_handle().send(CoroutineAction::Start)
-            },
-            "Start",
-        }
-        button {
-            onclick: move |_| {
-                use_coroutine_handle().send(CoroutineAction::Stop)
-            },
-            "Stop",
+    }
+}
+
+#[component]
+pub fn DelayInput() -> Element {
+    let handle = use_coroutine_handle();
+    let state: DisplayState = use_context();
+
+    rsx! {
+        Label {
+            html_for: "",
+            "Delay:"
+            Input {
+                oninput: move |e: FormEvent| {
+                    let delay = e.value();
+                    let Ok(delay): Result<u64, _> = delay.parse() else {
+                        return;
+                    };
+                    let delay = Duration::from_millis(delay);
+                    handle.send(AppMessage::ChangeDelay(delay));
+                },
+                r#type: "number",
+                name: "delay",
+                min: 0,
+                max: 1000,
+                required: true,
+                value: state.delay,
+            }
         }
     }
 }

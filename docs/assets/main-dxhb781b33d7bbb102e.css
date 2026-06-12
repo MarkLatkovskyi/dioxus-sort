@@ -1,0 +1,1 @@
+html{background-color:#afc}.flex-row label{flex-flow:wrap;display:flex}.flex-column{flex-flow:column wrap;display:flex}.flex-column>*{flex:auto}label>*{margin-top:1px;margin-bottom:1px;margin-left:10px}button{margin:1px}canvas{width:inherit;height:-webkit-fill-available;height:-moz-available;height:stretch;position:inherit;display:block}

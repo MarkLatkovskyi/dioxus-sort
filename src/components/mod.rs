@@ -3,5 +3,11 @@
 //! component  to be used in our app.
 
 mod control_panel;
+mod sort_selection;
 
 pub use control_panel::*;
+pub mod label;
+pub mod switch;
+pub mod combobox;
+pub mod button;
+pub mod input;
