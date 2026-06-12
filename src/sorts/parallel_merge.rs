@@ -1,7 +1,6 @@
 use crate::consts::Num;
 use crate::sorts::merge::merge_sublists;
 use crate::tools::checked_list::CheckedListMut;
-use crate::tools::checked_value::{cmp, CVal};
 
 pub async fn parallel_merge_sort<'a>(list: &'a mut CheckedListMut<'a, Num>) {
     let len = list.len();

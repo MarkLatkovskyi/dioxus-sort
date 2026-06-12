@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use crate::tools::checked_value::{cmp, CVal, CheckedValue};
+use crate::tools::checked_value::{CVal, CheckedValue};
 use crate::tools::misc::gcd;
 use futures::channel::mpsc::Sender;
 use futures::SinkExt;
